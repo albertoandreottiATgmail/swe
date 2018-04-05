@@ -1,0 +1,9 @@
+As part of the New York Times' indexing procedures, most articles are manually
+summarized and tagged by a staff of library scientists. This collection contains
+over 650,000 article-summary pairs which may prove to be useful in the development
+and evaluation of algorithms for automated document summarization. Also, over
+1.5 million documents have at least one tag. Articles are tagged for persons,
+places, organizations, titles and topics using a controlled vocabulary that is
+applied consistently across articles. For instance if one article mentions "Bill
+Clinton" and another refers to "President William Jefferson Clinton", both articles
+will be tagged with "CLINTON, BILL".
