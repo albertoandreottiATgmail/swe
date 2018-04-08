@@ -11,7 +11,7 @@ from sklearn.preprocessing import normalize
 import pickle
 
 class mSkipGram:
-    def __init__(self, sentences, nEmbed=100, negativeRate=5, stepsize=.025, winSize=5, minCount=1, epochs=5):
+    def __init__(self, sentences, nEmbed=100, negativeRate=5, stepsize=.025, winSize=2, minCount=1, epochs=5):
         self.labels = np.zeros(negativeRate + 1)
         self.labels[0] = 1.
         self.stepsize = stepsize
@@ -111,8 +111,7 @@ class mSkipGram:
                     self.trainWords += 1
                     # print
             if counter % 1000 == 0:
-                print
-                ' > training %d of %d' % (counter, len(self.trainset))
+                print('> training %d of %d' % (counter, len(self.trainset)))
                 self.loss.append(self.accLoss / self.trainWords)
                 self.trainWords = 0
                 self.accLoss = 0.
@@ -130,17 +129,28 @@ class mSkipGram:
         return self.cEmbed[self.w2id[word]]
 
 
+mapper = {'.': ' .', ',':' ,', "'": " ' ", '\\"':' " ', "\\'": " ' "}
+
+def normalize(text):
+    normalized = text
+    for c in mapper:
+        normalized = normalized.replace(c, mapper[c])
+    return normalized
+
 if __name__ == '__main__':
     sents = []
-    nSents = 1000#00
-    with open('7jrny10.txt') as f:
-        for l in f:
+    nSents = 200000
 
-            if len(l.split()) < 10:
+    filename = '../data/unlabeledTrainData.tsv' # '7jrny10.txt'
+    with open(filename) as f:
+        next(f) # header
+        for line in f:
+            text = line.split('\t')[1]
+            chunks = [word.strip() for word in normalize(text).split()]
+            if len(chunks) < 10:
                 continue
 
-            sents.append(l.split())
-
+            sents.append(chunks)
             if len(sents) > nSents:
                 break
 
