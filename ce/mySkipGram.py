@@ -5,10 +5,17 @@
 
 from __future__ import division
 import numpy as np
-from scipy.special import expit
+# from scipy.special import expit
 from collections import defaultdict
-from sklearn.preprocessing import normalize
+# from sklearn.preprocessing import normalize
 import pickle
+import random
+
+from data_access import KaggleDataAccess
+
+
+def expit(ndarray):
+    return np.exp(-np.logaddexp(0, -ndarray))
 
 class mSkipGram:
     def __init__(self, sentences, nEmbed=100, negativeRate=5, stepsize=.025, winSize=2, minCount=1, epochs=5):
@@ -45,7 +52,7 @@ class mSkipGram:
         self.loss = []
 
         for iter in range(epochs):
-            self.trainset = np.random.permutation(self.trainset)
+            random.shuffle(self.trainset)
             self.train()
             self.stepsize = max(.0001, self.stepsize - .005)
 
@@ -82,7 +89,7 @@ class mSkipGram:
         cIds = [contextId] + negativeIds
         contexts = self.cEmbed[cIds]
 
-        prod = np.dot(word, contexts.T) # x*y, x*z1, x*z2 ...
+        prod = np.dot(word, contexts.T) # array of scalars, x*y, x*z1, x*z2 ...
         prodexp = expit(prod)  # expit(x) = 1/(1+exp(-x))
 
         gradient = (self.labels - prodexp) * self.stepsize
@@ -116,8 +123,8 @@ class mSkipGram:
                 self.trainWords = 0
                 self.accLoss = 0.
 
-    def most_similar(self, word, k=10):
-        xnorm = normalize(self.cEmbed)
+   def most_similar(self, word, k=10):
+        xnorm = 1 # normalize(self.cEmbed), disabled by now
         sim = np.dot(xnorm, xnorm[self.w2id[word]])
         idx = np.argsort(sim)[::-1]
         topk = filter(lambda i: i != self.w2id[word], idx[:k + 1])
@@ -129,33 +136,15 @@ class mSkipGram:
         return self.cEmbed[self.w2id[word]]
 
 
-mapper = {'.': ' .', ',':' ,', "'": " ' ", '\\"':' " ', "\\'": " ' "}
-
-def normalize(text):
-    normalized = text
-    for c in mapper:
-        normalized = normalized.replace(c, mapper[c])
-    return normalized
-
 if __name__ == '__main__':
     sents = []
     nSents = 200000
 
-    filename = '../data/unlabeledTrainData.tsv' # '7jrny10.txt'
-    with open(filename) as f:
-        next(f) # header
-        for line in f:
-            text = line.split('\t')[1]
-            chunks = [word.strip() for word in normalize(text).split()]
-            if len(chunks) < 10:
-                continue
-
-            sents.append(chunks)
-            if len(sents) > nSents:
-                break
-
+    filename = '../data/unlabeledTrainData.tsv'
+    reader = KaggleDataAccess()
+    sents = list(reader.loadDataset(filename))
     sg = mSkipGram(sents)
-    pickle.dump(sg, open("myskipgram.p", "wb"))
+    pickle.dump(sg, open("myskipgram1.p", "wb"))
     print(list(sg.most_similar('mountain', 4)))
 
     #sg.wEmbed['ship']
