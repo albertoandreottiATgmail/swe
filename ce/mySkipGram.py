@@ -2,7 +2,6 @@
 # date: Aug 2017
 # brief: implementation of word2vec (skip-gram with negative sampling)
 
-
 from __future__ import division
 import numpy as np
 # from scipy.special import expit
@@ -18,12 +17,13 @@ def expit(ndarray):
     return np.exp(-np.logaddexp(0, -ndarray))
 
 class mSkipGram:
-    def __init__(self, sentences, nEmbed=100, negativeRate=5, stepsize=.025, winSize=2, minCount=1, epochs=5):
+    def __init__(self, sentences, categories, nEmbed=100, negativeRate=5, stepsize=.025, winSize=2, minCount=1, epochs=5):
         self.labels = np.zeros(negativeRate + 1)
         self.labels[0] = 1.
         self.stepsize = stepsize
         self.winSize = winSize
         self.negativeRate = negativeRate
+        self.categories = categories
         self.nEmbed = nEmbed
 
         self.vocab = defaultdict(int)
@@ -92,7 +92,7 @@ class mSkipGram:
         prod = np.dot(word, contexts.T) # array of scalars, x*y, x*z1, x*z2 ...
         prodexp = expit(prod)  # expit(x) = 1/(1+exp(-x))
 
-        gradient = (self.labels - prodexp) * self.stepsize
+        gradient = (self.labels - prodexp + beta * self.dD(wordId)) * self.stepsize
         self.cEmbed[cIds] += np.outer(gradient, word)
         word += np.dot(gradient, contexts)
 
@@ -121,9 +121,9 @@ class mSkipGram:
                 print('> training %d of %d' % (counter, len(self.trainset)))
                 self.loss.append(self.accLoss / self.trainWords)
                 self.trainWords = 0
-                self.accLoss = 0.
+                #self.accLoss = 0.0
 
-   def most_similar(self, word, k=10):
+    def most_similar(self, word, k=10):
         xnorm = 1 # normalize(self.cEmbed), disabled by now
         sim = np.dot(xnorm, xnorm[self.w2id[word]])
         idx = np.argsort(sim)[::-1]
@@ -135,6 +135,49 @@ class mSkipGram:
     def __getitem__(self, word):
         return self.cEmbed[self.w2id[word]]
 
+    def dD(self, i):
+        '''
+        compute the derivative of the constraints' cost function
+        '''
+        # find the semantic group(s) where this word belongs
+        pos_group_vals = [s for _, s in self.categories.items() if i in s]
+        merged_pos_groups = reduce(lambda u, v: u.union(v), pos_group_vals)
+
+        # find the semantic group(s) where this word does not belong
+        neg_group_vals = [s for _, s in self.categories.items() if i not in s]
+        merged_neg_groups = reduce(lambda u, v: u.union(v), neg_group_vals)
+
+        kj = zip(neg_group_vals, pos_group_vals)
+        
+        # if 'i' not in any semantic type(kj is empty) return the '0 vector'
+        result = np.zeros(nEmbed)
+        for k, j in kj:
+            resut += self.dhinge(dsij(i, k, t) - dsij(i, j, t))
+
+        return result
+
+    def sij(self, wi, wj):
+
+        '''
+        computes the cosine similarity between wi and wj
+
+        '''
+        pass
+
+    def dsij(self, wi, wj):
+
+        '''
+        computes the derivative of the cosine similarity between wi and wj with respect to wi
+
+        '''
+        pass
+   
+
+    def dhinge(self, vector):
+        '''
+        computes the derivative of the hinge function on the input vector
+        '''
+        return (vector > 0.0) * vector
 
 if __name__ == '__main__':
     sents = []
@@ -143,6 +186,7 @@ if __name__ == '__main__':
     filename = '../data/unlabeledTrainData.tsv'
     reader = KaggleDataAccess()
     sents = list(reader.loadDataset(filename))
+
     sg = mSkipGram(sents)
     pickle.dump(sg, open("myskipgram1.p", "wb"))
     print(list(sg.most_similar('mountain', 4)))
