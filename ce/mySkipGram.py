@@ -3,15 +3,16 @@
 # brief: implementation of word2vec (skip-gram with negative sampling)
 
 from __future__ import division
+
+from functools import reduce
+
 import numpy as np
+from numpy.linalg import norm
 # from scipy.special import expit
 from collections import defaultdict
 # from sklearn.preprocessing import normalize
 import pickle
 import random
-
-from data_access import KaggleDataAccess
-
 
 def expit(ndarray):
     return np.exp(-np.logaddexp(0, -ndarray))
@@ -25,6 +26,8 @@ class mSkipGram:
         self.negativeRate = negativeRate
         self.categories = categories
         self.nEmbed = nEmbed
+        # influence of the constraints in cost
+        self.beta = 0.2
 
         self.vocab = defaultdict(int)
 
@@ -92,9 +95,9 @@ class mSkipGram:
         prod = np.dot(word, contexts.T) # array of scalars, x*y, x*z1, x*z2 ...
         prodexp = expit(prod)  # expit(x) = 1/(1+exp(-x))
 
-        gradient = (self.labels - prodexp + beta * self.dD(wordId)) * self.stepsize
-        self.cEmbed[cIds] += np.outer(gradient, word)
-        word += np.dot(gradient, contexts)
+        gradient = (self.labels - prodexp) * self.stepsize
+        self.cEmbed[cIds] += np.outer(gradient, word) - self.beta * np.apply_along_axis(self.dD, axis=1, arr=cIds)
+        word += np.dot(gradient, contexts) - self.beta * self.dD(wordId)
 
         # for logging
         self.accLoss -= sum(np.log(expit(-1 * prod[1:]))) + np.log(expit(prod[0]))
@@ -140,19 +143,19 @@ class mSkipGram:
         compute the derivative of the constraints' cost function
         '''
         # find the semantic group(s) where this word belongs
-        pos_group_vals = [s for _, s in self.categories.items() if i in s]
+        pos_group_vals = [sg for _, sg in self.categories.items() if i in sg]
         merged_pos_groups = reduce(lambda u, v: u.union(v), pos_group_vals)
 
         # find the semantic group(s) where this word does not belong
-        neg_group_vals = [s for _, s in self.categories.items() if i not in s]
+        neg_group_vals = [sg for _, sg in self.categories.items() if i not in sg]
         merged_neg_groups = reduce(lambda u, v: u.union(v), neg_group_vals)
 
         kj = zip(neg_group_vals, pos_group_vals)
         
         # if 'i' not in any semantic type(kj is empty) return the '0 vector'
-        result = np.zeros(nEmbed)
+        result = np.zeros(self.nEmbed)
         for k, j in kj:
-            resut += self.dhinge(dsij(i, k, t) - dsij(i, j, t))
+            result += self.dhinge(self.dsij(i, k) - self.dsij(i, j))
 
         return result
 
@@ -160,9 +163,9 @@ class mSkipGram:
 
         '''
         computes the cosine similarity between wi and wj
-
         '''
-        pass
+        norm_prod = norm(wi) * norm(wj)
+        return np.dot(wi, wj) / norm_prod
 
     def dsij(self, wi, wj):
 
@@ -170,7 +173,8 @@ class mSkipGram:
         computes the derivative of the cosine similarity between wi and wj with respect to wi
 
         '''
-        pass
+        sij = self.sij(wi, wj)
+        return (sij / norm(wi) ** 2) * wi + wj / (norm(wi) * norm(wj))
    
 
     def dhinge(self, vector):
