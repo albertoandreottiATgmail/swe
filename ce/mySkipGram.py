@@ -49,6 +49,9 @@ class mSkipGram:
         for idx, word in enumerate(self.vocab):
             self.w2id[word] = idx
 
+        # filter constraints
+        self.constraints = {self.w2id[word]: categories[word] for word in categories if word in self.w2id.keys()}
+
         self.make_cum_table()
         self.accLoss = 0.0
         self.trainWords = 0
@@ -96,7 +99,7 @@ class mSkipGram:
         prodexp = expit(prod)  # expit(x) = 1/(1+exp(-x))
 
         gradient = (self.labels - prodexp) * self.stepsize
-        self.cEmbed[cIds] += np.outer(gradient, word) - self.beta * np.apply_along_axis(self.dD, axis=1, arr=cIds)
+        self.cEmbed[cIds] += np.outer(gradient, word) - self.beta * np.apply_along_axis(self.dD, axis=0, arr=cIds)
         word += np.dot(gradient, contexts) - self.beta * self.dD(wordId)
 
         # for logging
