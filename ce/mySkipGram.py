@@ -3,21 +3,21 @@
 # brief: implementation of word2vec (skip-gram with negative sampling)
 
 from __future__ import division
-
 from functools import reduce
-
-import numpy as np
-from numpy.linalg import norm
-# from scipy.special import expit
 from collections import defaultdict
-# from sklearn.preprocessing import normalize
+import numpy as np
 import pickle
 import random
+from numpy.linalg import norm
+from collections import defaultdict
 
 def expit(ndarray):
     return np.exp(-np.logaddexp(0, -ndarray))
 
 class mSkipGram:
+
+    flatten = lambda l: [item for sublist in l for item in sublist]
+
     def __init__(self, sentences, categories, nEmbed=100, negativeRate=5, stepsize=.025, winSize=2, minCount=1, epochs=5):
         self.labels = np.zeros(negativeRate + 1)
         self.labels[0] = 1.
@@ -50,7 +50,14 @@ class mSkipGram:
             self.w2id[word] = idx
 
         # filter constraints
-        self.constraints = {self.w2id[word]: categories[word] for word in categories if word in self.w2id.keys()}
+        keys = set(self.w2id.keys())
+        self.id2types = {self.w2id[word]: categories[word] for word in categories if word in keys}
+        self.type2ids = defaultdict(set)
+
+        for k, types in self.id2types.items():
+            for type in types:
+                self.type2ids[type].add(k)
+
 
         self.make_cum_table()
         self.accLoss = 0.0
@@ -99,7 +106,8 @@ class mSkipGram:
         prodexp = expit(prod)  # expit(x) = 1/(1+exp(-x))
 
         gradient = (self.labels - prodexp) * self.stepsize
-        self.cEmbed[cIds] += np.outer(gradient, word) - self.beta * np.apply_along_axis(self.dD, axis=0, arr=cIds)
+        #self.cEmbed[cIds] += np.outer(gradient, word) - self.beta * np.apply_along_axis(self.dD, axis=0, arr=cIds)
+        self.cEmbed[cIds] += np.outer(gradient, word) - self.beta * np.array(list(map(self.dD, cIds)))
         word += np.dot(gradient, contexts) - self.beta * self.dD(wordId)
 
         # for logging
@@ -107,7 +115,7 @@ class mSkipGram:
 
     def train(self):
         for counter, sentence in enumerate(self.trainset):
-            sentence = list(filter(lambda word: word in self.vocab, sentence))
+            sentence = list(filter(lambda w: w in self.vocab, sentence))
 
             for wpos, word in enumerate(sentence):
                 wIdx = self.w2id[word]
@@ -125,6 +133,8 @@ class mSkipGram:
                     # print
             if counter % 1000 == 0:
                 print('> training %d of %d' % (counter, len(self.trainset)))
+                if self.trainWords == 0:
+                    print(sentence)
                 self.loss.append(self.accLoss / self.trainWords)
                 self.trainWords = 0
                 #self.accLoss = 0.0
@@ -145,18 +155,22 @@ class mSkipGram:
         '''
         compute the derivative of the constraints' cost function
         '''
-        # find the semantic group(s) where this word belongs
-        pos_group_vals = [sg for _, sg in self.categories.items() if i in sg]
-        merged_pos_groups = reduce(lambda u, v: u.union(v), pos_group_vals)
-
-        # find the semantic group(s) where this word does not belong
-        neg_group_vals = [sg for _, sg in self.categories.items() if i not in sg]
-        merged_neg_groups = reduce(lambda u, v: u.union(v), neg_group_vals)
-
-        kj = zip(neg_group_vals, pos_group_vals)
-        
         # if 'i' not in any semantic type(kj is empty) return the '0 vector'
         result = np.zeros(self.nEmbed)
+
+        if i not in self.constraints:
+            return result
+
+        # find the semantic types where this word belongs
+        pos_types = [type for type in self.id2types[i]]
+        # merge all ids coming from all previous types
+        merged_pos_wids = set(flatten([self.type2ids[t] for t in pos_types]))
+
+        # find the semantic group(s) where this word does not belong
+        neg_types = [self.type2ids[type] for type in self.type2ids if type not in self.id2types[i]]
+        merged_neg_wids = set(flatten([self.type2ids[t] for t in neg_types]))
+
+        kj = zip(merged_neg_wids, merged_pos_wids)
         for k, j in kj:
             result += self.dhinge(self.dsij(i, k) - self.dsij(i, j))
 
