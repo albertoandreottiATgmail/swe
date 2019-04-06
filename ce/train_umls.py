@@ -11,9 +11,17 @@ constraints_file = 'umls_constraints.p'
 
 # load dataset - PubMed/i2b2
 def sents():
-    with open('i2b2_pubmed.txt') as f:
+    with open('i2b2_pubmed_200k.txt') as f:
         for line in f.readlines():
-            yield line.split()
+            splits = line.split()
+            cleaned = []
+            for t in splits:
+                if t.endswith('.') or t.endswith(','):
+                    cleaned.append(t[:-1])
+                    cleaned.append(t[-1])
+                else:
+                    cleaned.append(t)
+            yield cleaned
 
 # load the costraints
 if not os.path.isfile(constraints_file):
@@ -37,8 +45,8 @@ else:
 # keep viruses and bacteria only
 categories = {k.lower():v for k,v in categories.items() if 'T005' in v or 'T007' in v}
 
-sg = mSkipGram(list(sents()), categories)
+sg = mSkipGram(sents, categories)
 pickle.dump(sg, open("myskipgram1.p", "wb"))
-print(list(sg.most_similar('mountain', 4)))
+print(list(sg.most_similar('cell', 5)))
 
 # sg.wEmbed['ship']
