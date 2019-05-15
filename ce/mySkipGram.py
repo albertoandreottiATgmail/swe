@@ -8,7 +8,6 @@ import random
 from numpy.linalg import norm
 from collections import defaultdict
 
-
 def expit(ndarray):
     return np.exp(-np.logaddexp(0, -ndarray))
 
@@ -16,10 +15,10 @@ class mSkipGram:
 
     flatten = lambda l: [item for sublist in l for item in sublist]
 
-    def __init__(self, sentences, categories, nEmbed=100, negativeRate=5, stepsize=.025, winSize=2, minCount=1, epochs=5):
+    def __init__(self, sentences, categories, nEmbed=100, negativeRate=5, stepsize=.025, winSize=2, minCount=1, epochs=2):
         # TODO: filtering categories twice?
         self.whitelist = set(['T005', 'T007'])
-        self.applyConstraints = False
+        self.applyConstraints = True
         self.labels = np.zeros(negativeRate + 1)
         self.labels[0] = 1.
         self.stepsize = stepsize
@@ -28,10 +27,10 @@ class mSkipGram:
         self.categories = categories
         self.nEmbed = nEmbed
         # influence of the constraints in cost
-        self.beta = 0.2
+        self.beta = 0.01
 
         self.vocab = defaultdict(int)
-        self.trainset = sentences()
+        #self.trainset = sentences()
 
         for sentence in sentences():
             for word in sentence:
@@ -69,10 +68,13 @@ class mSkipGram:
         for iter in range(epochs):
             # probably the shuffling not necessary if the DS is big enough
             #random.shuffle(self.trainset)
-            self.train()
+            self.train(sentences())
             self.stepsize = max(.0001, self.stepsize - .005)
 
-
+    def continue_train(self, sentences, epochs=2):
+        for iter in range(epochs):
+            self.train(sentences())
+            self.stepsize = max(.0001, self.stepsize - .005)
 
     def make_cum_table(self, power=0.75, domain=2 ** 31 - 1):
         """
@@ -123,8 +125,8 @@ class mSkipGram:
         # for logging
         self.accLoss -= sum(np.log(expit(-1 * prod[1:]))) + np.log(expit(prod[0]))
 
-    def train(self):
-        for counter, sentence in enumerate(self.trainset):
+    def train(self, trainset):
+        for counter, sentence in enumerate(trainset):
             sentence = list(filter(lambda w: w in self.vocab, sentence))
 
             for wpos, word in enumerate(sentence):
@@ -140,7 +142,7 @@ class mSkipGram:
                     negativeIds = self.sample({wIdx, ctxtId})
                     self.trainWord(wIdx, ctxtId, negativeIds)
                     self.trainWords += 1
-                    # print
+
             if counter % 1000 == 0:
                 print('> training sum(np.log(expit(-1 * prod[1:]))) + np.log(expit(prod[0]))%d sentences' % counter)
                 if self.trainWords == 0:
@@ -148,8 +150,9 @@ class mSkipGram:
                 self.loss.append(self.accLoss / self.trainWords)
                 self.trainWords = 0
                 self.accLoss = 0.0
-            if counter == 2000:
-                self.measure_category_similarity()
+            #if counter == 1000:
+                #self.measure_category_similarity()
+                #break
 
     def most_similar(self, word, k=10):
         from sklearn.preprocessing import normalize
@@ -170,8 +173,6 @@ class mSkipGram:
         '''
         # if 'i' not in any semantic type(kj is empty) return the '0 vector'
         result = np.zeros(self.nEmbed)
-        sik = np.zeros(self.nEmbed)
-
         if i not in self.id2types:
             return result
 
@@ -188,11 +189,20 @@ class mSkipGram:
         merged_neg_wids = set(mSkipGram.flatten([self.type2ids[t] for t in neg_types]))
 
         for k in merged_neg_wids:
+            if not np.any(self.wEmbed[k]):
+                continue
             for j in merged_pos_wids:
-                result += self.dhinge(self.dsij(self.wEmbed[i], self.wEmbed[k]) -
-                                      self.dsij(self.wEmbed[i], self.wEmbed[j]))
+                if not np.any(self.wEmbed[j]):
+                    continue
+                result += self.dhinge(self.sij(self.wEmbed[i], self.wEmbed[k])- self.sij(self.wEmbed[i], self.wEmbed[j]))\
+                          * (self.dsij(self.wEmbed[i], self.wEmbed[k]) - self.dsij(self.wEmbed[i], self.wEmbed[j]))
 
         return result
+
+    def delta(self, i, j, t):
+        if t == i or t ==j:
+            return 1.0
+        return 0.0
 
     def sij(self, wi, wj):
 
@@ -217,7 +227,7 @@ class mSkipGram:
         if norm_prod == 0.0:
             return self.zeroVector
 
-        return (sij / norm(wi) ** 2) * wi + wj / norm_prod
+        return (sij / (norm(wi) ** 2)) * wi + wj / norm_prod
    
     def dhinge(self, vector):
         '''
@@ -239,14 +249,16 @@ class mSkipGram:
     def measure_intercategory_similarity(self):
         ''' measures how close to each other vectors of different category are '''
         avg_dist = 0.0
-        for this_category in self.categories:
-            for other_category in [c for c in self.categories if other_category != this_category]:
-                other_category_words = np.array([v for v in self.vocab if v in other_category])
-                for vector in other_category_words:
-                    avg_dist += sum(np.dot(vector, other_category_words)) / 100.0
+        for this_category in self.whitelist:
+            for other_category in [c for c in self.whitelist if other_category != this_category]:
+                other_category_wids = list(self.type2ids[other_category])
+                other_category_vectors = self.wEmbed[other_category_wids]
+                this_category_wids = list(self.type2ids[this_category])
+                this_category_vectors = self.wEmbed[this_category_wids]
+                for vector in this_category_vectors:
+                    avg_dist += sum(np.dot(vector, other_category_vectors.T)) / 100.0
 
         return avg_dist
-
 
 if __name__ == '__main__':
     sents = []

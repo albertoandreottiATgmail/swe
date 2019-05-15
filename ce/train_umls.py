@@ -45,8 +45,12 @@ else:
 # keep viruses and bacteria only
 categories = {k.lower():v for k,v in categories.items() if 'T005' in v or 'T007' in v}
 
-sg = mSkipGram(sents, categories)
-pickle.dump(sg, open("myskipgram1.p", "wb"))
+# comment/uncomment next two lines
+sg = pickle.load(open('skipGram_173ksent.p', 'rb'))
+sg.continue_train(sents)
+
+# sg = mSkipGram(sents, categories)
+pickle.dump(sg, open("skipgram.p", "wb"))
 print(list(sg.most_similar('cell', 5)))
 
 # sg.wEmbed['ship']
