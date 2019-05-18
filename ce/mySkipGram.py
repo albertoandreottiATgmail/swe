@@ -27,7 +27,7 @@ class mSkipGram:
         self.categories = categories
         self.nEmbed = nEmbed
         # influence of the constraints in cost
-        self.beta = 0.01
+        self.beta = 0.001
 
         self.vocab = defaultdict(int)
         #self.trainset = sentences()
@@ -119,7 +119,7 @@ class mSkipGram:
         word += np.dot(gradient, contexts)
 
         if self.applyConstraints:
-            self.cEmbed[cIds] -= self.beta * np.array(list(map(self.dD, cIds)))
+            #self.cEmbed[cIds] -= self.beta * np.array(list(map(self.dD, cIds)))
             word -= self.beta * self.dD(wordId)
 
         # for logging
@@ -167,35 +167,58 @@ class mSkipGram:
     def __getitem__(self, word):
         return self.cEmbed[self.w2id[word]]
 
-    def dD(self, i):
+    def dD(self, t):
         '''
         compute the derivative of the constraints' cost function
         '''
         # if 'i' not in any semantic type(kj is empty) return the '0 vector'
         result = np.zeros(self.nEmbed)
-        if i not in self.id2types:
+        if t not in self.id2types:
             return result
 
         # find the semantic types where this word belongs
-        pos_types = [type for type in self.id2types[i]]
-        pos_types = [t for t in pos_types if t in self.whitelist]
+        pos_types = [type for type in self.id2types[t]]
+        pos_types = [pt for pt in pos_types if pt in self.whitelist]
 
         # merge all ids coming from all previous types
-        merged_pos_wids = set(mSkipGram.flatten([self.type2ids[t] for t in pos_types]))
+        merged_pos_wids = set(mSkipGram.flatten([self.type2ids[pt] for pt in pos_types]))
+        merged_pos_wids.remove(t)
 
         # find the semantic types where this word does not belong
-        neg_types = [type for type in self.type2ids if type not in self.id2types[i]]
-        neg_types = [t for t in neg_types if t in self.whitelist]
-        merged_neg_wids = set(mSkipGram.flatten([self.type2ids[t] for t in neg_types]))
+        neg_types = [type for type in self.type2ids if type not in self.id2types[t]]
+        neg_types = [nt for nt in neg_types if nt in self.whitelist]
+        merged_neg_wids = set(mSkipGram.flatten([self.type2ids[nt] for nt in neg_types]))
 
-        for k in merged_neg_wids:
-            if not np.any(self.wEmbed[k]):
-                continue
-            for j in merged_pos_wids:
-                if not np.any(self.wEmbed[j]):
+        for i in [t]:
+            for k in merged_neg_wids:
+                if not np.any(self.wEmbed[k]):
                     continue
-                result += self.dhinge(self.sij(self.wEmbed[i], self.wEmbed[k])- self.sij(self.wEmbed[i], self.wEmbed[j]))\
-                          * (self.dsij(self.wEmbed[i], self.wEmbed[k]) - self.dsij(self.wEmbed[i], self.wEmbed[j]))
+                for j in merged_pos_wids: # TODO remove t here
+                    if not np.any(self.wEmbed[j]):
+                        continue
+                    result += self.dhinge(self.sij(self.wEmbed[i], self.wEmbed[k])- self.sij(self.wEmbed[i], self.wEmbed[j]))\
+                              * (self.dsij(self.wEmbed[i], self.wEmbed[k])
+                                 - self.dsij(self.wEmbed[i], self.wEmbed[j]))
+
+        for i in merged_neg_wids:
+            for j in merged_neg_wids:
+                if i == j:
+                    continue
+                for k in [t]:
+                    if not np.any(self.wEmbed[k]):
+                        continue
+                    result += self.dhinge(self.sij(self.wEmbed[i], self.wEmbed[k]) - self.sij(self.wEmbed[i], self.wEmbed[j]))\
+                              * (self.dsij(self.wEmbed[i], self.wEmbed[k]))
+
+        for i in merged_pos_wids: # TODO remove t here
+            for k in merged_neg_wids:
+                if not np.any(self.wEmbed[k]):
+                    continue
+                for j in [t]:
+                    if not np.any(self.wEmbed[j]):
+                        continue
+                    result += self.dhinge(self.sij(self.wEmbed[i], self.wEmbed[k])- self.sij(self.wEmbed[i], self.wEmbed[j]))\
+                              * (- self.dsij(self.wEmbed[i], self.wEmbed[j]))
 
         return result
 
